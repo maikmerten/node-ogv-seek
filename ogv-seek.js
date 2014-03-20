@@ -1,9 +1,11 @@
 var port = 8080;
-var file = "/tmp/test.ogv";
+var prefix = "/tmp/";
 
 var http = require("http");
 var url = require("url");
 var spawn = require("child_process").spawn;
+var path = require("path");
+var fs = require("fs");
 
 function getTimeString(timeParam) {
 	var time = parseInt(timeParam);
@@ -27,8 +29,14 @@ function chopOgg(res, file, timestring) {
 	res.setHeader("content-type", "video/ogg");
 	res.on("close", function() { child.kill(); console.log("response channel closed.")});
 	child.stdout.on("data", function(data) { res.write(data); });
-	child.stdout.on("end", function() { res.end; });	
-	child.on("exit", function() { res.end; console.log("oggz-chop exited."); });
+	child.stdout.on("end", function() { res.end(); });	
+	child.on("exit", function() { res.end(); console.log("oggz-chop exited."); });
+}
+
+function reportError(res) {
+	res.writeHead(500, {'Content-Type': 'text/plain'});
+	res.write("Internal Server Error");
+	res.end();
 }
 
 
@@ -40,9 +48,17 @@ var server = http.createServer(function(req, res) {
 	console.log("parsed path: " + parsedurl.pathname);
 	console.log("parsed time: " + timestring);
 
-	chopOgg(res, file, timestring);
+	var file = prefix + parsedurl.pathname;
+	file = path.normalize(file);
+
+	if(file.indexOf(prefix) == 0 && fs.existsSync(file)) {
+		chopOgg(res, file, timestring);
+	} else {
+		reportError(res);
+	}
 });
 
+prefix = path.normalize(prefix);
 server.listen(port);
 console.log("listening on port " + port);
-console.log("try http://localhost:"+port+"/bla?t=5 to jump 5 seconds into the ogv file");
+console.log("try http://localhost:"+port+"/test.ogv?t=5 to jump 5 seconds into " + prefix + "/test.ogv");
