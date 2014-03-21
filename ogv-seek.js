@@ -51,8 +51,14 @@ var server = http.createServer(function(req, res) {
 	var file = prefix + parsedurl.pathname;
 	file = path.normalize(file);
 
-	if(file.indexOf(prefix) == 0 && fs.existsSync(file)) {
-		chopOgg(res, file, timestring);
+	if(file.indexOf(prefix) == 0) {
+		fs.exists(file, function(exists) {
+			if(exists) {
+				chopOgg(res, file, timestring);
+			} else {
+				reportError(res);
+			}
+		});
 	} else {
 		reportError(res);
 	}
