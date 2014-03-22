@@ -39,18 +39,22 @@ function chopOgg(res, file, timestring) {
 
 
 function serveOggWithStats(res, file, stats, range) {
-	res.setHeader("Content-Type", "video/ogg");
-	res.setHeader("Accept-Ranges", "bytes");
-
 	var length = stats.size;
 	var options = {};
 	if(range) {
+		options.end = stats.size - 1;
+		if(range.end > range.start) {
+			options.end = range.end;
+		}
 		options.start = range.start;
-		options.end = range.end;
-		length = range.end - range.start;
+		length = options.end - options.start;
+		res.statusCode = 206;
+		res.setHeader("Content-Range", "bytes " + options.start + "-" + options.end + "/" + stats.size);
 	} else {
 		res.setHeader("X-Content-Duration", stats.duration);
 	}
+	res.setHeader("Content-Type", "video/ogg");
+	res.setHeader("Accept-Ranges", "bytes");
 	res.setHeader("Content-Length", length);
 
 	var stream = fs.createReadStream(file, options);
@@ -118,7 +122,6 @@ function parseRange(headers) {
 
 var server = http.createServer(function(req, res) {
 	var range = parseRange(req.headers);
-	console.log("### range: " + range);
 	var parsedurl = url.parse(req.url, true);
 	var timeParam = parsedurl.query.t;
 
