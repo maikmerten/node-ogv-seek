@@ -4,8 +4,12 @@ var prefix = "/tmp/";
 var http = require("http");
 var url = require("url");
 var spawn = require("child_process").spawn;
+var exec = require("child_process").exec;
 var path = require("path");
 var fs = require("fs");
+
+var statsCache = {};
+
 
 function getTimeString(timeParam) {
 	var time = parseInt(timeParam);
@@ -34,17 +38,44 @@ function chopOgg(res, file, timestring) {
 }
 
 
+function serveOggWithStats(res, file, stats) {
+	res.setHeader("Content-Type", "video/ogg");
+	res.setHeader("Content-Length", stats.size);
+	res.setHeader("X-Content-Duration", stats.duration);
+	var stream = fs.createReadStream(file);
+	stream.pipe(res);
+}
+
+
 function serveOgg(res, file) {
-	fs.stat(file, function(err, stats) {
-		if(err) {
-			reportError(res);
-			return;
-		}
-		res.setHeader("Content-Type", "video/ogg");
-		res.setHeader("Content-Length", stats.size);
-		var stream = fs.createReadStream(file);
-		stream.pipe(res);
-	});
+
+	var stats = statsCache[file];
+	if(stats) {
+		serveOggWithStats(res, file, stats);
+	} else {
+		fs.stat(file, function(err, stats) {
+			if(err) {
+				reportError(res);
+				return;
+			}
+			exec("oggz-info " + file, function(error, stdout, stderr) {
+				if(error) {
+					reportError(res);
+					return;
+				}
+				var duration = stdout.split("\n")[0].split(": ")[1];
+				var hours = parseInt(duration.split(":")[0]);
+				var minutes = parseInt(duration.split(":")[1]);
+				var seconds = parseFloat(duration.split(":")[2]);
+
+				duration = (hours * 3600) + (minutes * 60) + seconds;
+				stats.duration = duration;
+				statsCache[file] = stats;
+				serveOggWithStats(res, file, stats);
+			});
+		
+		});
+	}
 }
 
 
