@@ -38,20 +38,31 @@ function chopOgg(res, file, timestring) {
 }
 
 
-function serveOggWithStats(res, file, stats) {
+function serveOggWithStats(res, file, stats, range) {
 	res.setHeader("Content-Type", "video/ogg");
-	res.setHeader("Content-Length", stats.size);
-	res.setHeader("X-Content-Duration", stats.duration);
-	var stream = fs.createReadStream(file);
+	res.setHeader("Accept-Ranges", "bytes");
+
+	var length = stats.size;
+	var options = {};
+	if(range) {
+		options.start = range.start;
+		options.end = range.end;
+		length = range.end - range.start;
+	} else {
+		res.setHeader("X-Content-Duration", stats.duration);
+	}
+	res.setHeader("Content-Length", length);
+
+	var stream = fs.createReadStream(file, options);
 	stream.pipe(res);
 }
 
 
-function serveOgg(res, file) {
+function serveOgg(res, file, range) {
 
 	var stats = statsCache[file];
 	if(stats) {
-		serveOggWithStats(res, file, stats);
+		serveOggWithStats(res, file, stats, range);
 	} else {
 		fs.stat(file, function(err, stats) {
 			if(err) {
@@ -71,7 +82,7 @@ function serveOgg(res, file) {
 				duration = (hours * 3600) + (minutes * 60) + seconds;
 				stats.duration = duration;
 				statsCache[file] = stats;
-				serveOggWithStats(res, file, stats);
+				serveOggWithStats(res, file, stats, range);
 			});
 		
 		});
@@ -86,7 +97,28 @@ function reportError(res) {
 }
 
 
+function parseRange(headers) {
+	if(!headers.range) {
+		return;
+	}
+	var rangestring = headers.range.split("=")[1];
+	var start = parseInt(rangestring.split("-")[0]);
+	var end = parseInt(rangestring.split("-")[1]);
+
+	start = (isNaN(start) || start < 0) ? 0 : start;
+	end = (end <= start) ? null : end;
+
+	var result = {};
+	result.start = start;
+	result.end = end;
+	return result;
+}
+
+
+
 var server = http.createServer(function(req, res) {
+	var range = parseRange(req.headers);
+	console.log("### range: " + range);
 	var parsedurl = url.parse(req.url, true);
 	var timeParam = parsedurl.query.t;
 
@@ -104,7 +136,7 @@ var server = http.createServer(function(req, res) {
 					chopOgg(res, file, timestring);
 				} else {
 					console.log("no time given, directly streaming file");
-					serveOgg(res, file);
+					serveOgg(res, file, range);
 				}
 			} else {
 				reportError(res);
